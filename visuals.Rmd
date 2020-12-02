@@ -1,0 +1,161 @@
+---
+title: "Pre-Made Visualizations"
+author: "Nick Brinkmann"
+date: "12/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gganimate)
+library(lubridate)
+library(ggrepel)
+library(wesanderson)
+```
+
+## Creating Visualizations
+```{r}
+all_games <- readRDS("all_games.RDS")
+```
+
+
+```{r elo_plot_smooth}
+# Creating a plot using average Elo for each day, to mitigate large deviations
+# in rating over a single day. Makes plot smoother
+
+elo_by_day <- all_games %>% 
+  group_by(Date, website, format) %>% 
+  summarize(avg_daily_elo = mean(my_elo))
+
+elo_by_day %>% 
+ggplot(aes(x = Date, 
+             y = avg_daily_elo,
+                 group = format,
+                 color = factor(format))) +
+  geom_line(na.rm = TRUE) +
+  facet_wrap(~ website) +
+  labs(title = "Elo Rating Over Time, by Website and Time Control", 
+       y = "Elo Rating",
+       caption = "Source: Self-collected data") +
+  ylim(1200,2200) +
+  theme_bw() +
+  scale_color_discrete(name = "Format") +
+  transition_reveal(Date)
+```
+```{r}
+anim_save("smoother_elo_plot.gif")
+```
+
+
+```{r elo_plot}
+# Elo vs time
+
+elo_plot <- all_games %>%
+  ggplot(aes(x = Date, 
+             y = my_elo,
+                 group = format,
+                 color = factor(format))) +
+  geom_line(na.rm = TRUE) +
+  facet_wrap(~ website) +
+  labs(title = "Elo Rating Over Time, by Website and Time Control", 
+       y = "Elo Rating",
+       caption = "Source: Self-collected data") +
+  ylim(1200,2200) +
+  theme_bw() +
+  scale_color_discrete(name = "Format") +
+  transition_reveal(Date)
+
+```
+
+
+```{r pop_openings}
+# My most popular openings with each color
+
+openings <- all_games %>% 
+  group_by(me_white, ECO) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  slice(1:15)
+
+
+  openings %>% 
+  ggplot(aes(x = fct_reorder(ECO, count), y = count, fill = me_white)) +
+  geom_col(position = position_dodge2(preserve = "single")) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+```{r}
+# UNNECESSARY
+
+white_openings <- openings %>% 
+  filter(me_white) %>% 
+  droplevels()
+
+black_openings <- openings %>% 
+  filter(!me_white) %>% 
+  droplevels()
+
+
+ggplot(data = white_openings) +
+  geom_col(data = white_openings,
+           mapping = aes(x = fct_reorder(ECO, desc(count)), y = count))
+
+ggplot(data = black_openings) + 
+  geom_col(data = black_openings,
+           mapping = aes(x = fct_reorder(ECO, desc(count)), y = count))
+```
+
+```{r best_worst_openings}
+all_games %>% 
+  summarize(score = mean(outcome))
+
+all_games %>% 
+  group_by(ECO, ECO_letter) %>% 
+  summarize(avg_score = mean(outcome),
+            count = n()) %>% 
+  filter(count >= 20) %>% 
+  arrange(avg_score) %>% 
+  filter(!between(avg_score, 0.48, 0.58)) %>% 
+  ggplot(aes(y = avg_score, x = count)) +
+  geom_text_repel(aes(label = ECO, color = ECO_letter), size = 3) +
+  geom_hline(yintercept = 0.533, lty = "dashed", color = "dodgerblue") +
+  geom_text(x = 350, y = 0.52, label = "Average Win Rate Over All Games",
+            color = "dodgerblue") +
+  geom_text(x = 350, y = 0.545, label = "53.3%", color = "dodgerblue") +
+  labs(title = "My Most and Least Successful Openings",
+       subtitle = "Minimum 20 Games Played per Opening",
+       x = "Number of Games",
+       y = "Win rate",
+       caption = "Colored by similarity in opening moves. See Discussion tab
+       for more information on what each code means.") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_color_manual(values = wes_palette("Darjeeling1")) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+ggsave(filename = "openings.png")
+```
+
+```{r}
+all_games %>% 
+  filter(ECO == "B34")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

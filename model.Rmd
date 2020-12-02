@@ -1,0 +1,30 @@
+---
+title: "Model"
+author: "Nick Brinkmann"
+date: "12/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rstanarm)
+```
+
+```{r outcomes_model, cache = TRUE}
+all_games_dense <- readRDS("all_games_dense.RDS")
+
+outcomes_model <- stan_glm(formula = outcome ~ me_white + elo_diff + NMoves + 
+                             format + ECO_category:me_white,
+         data = all_games_dense,
+         refresh = 0)
+```
+
+```{r}
+print(outcomes_model, digits = 6)
+```
+
+
+```{r elo_model, cache = TRUE}
+elo_model <- stan_glm(formula = my_elo ~ Date + )
+```
+

@@ -1,0 +1,208 @@
+---
+title: "Data Gathering"
+author: "Nick Brinkmann"
+date: "12/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(bigchess)
+library(rjson)
+library(lubridate)
+library(tidyverse)
+```
+
+## DATA
+
+```{r lichess, cache = TRUE}
+# For an explanation of the PGN data format, see:
+# http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm#c8.1.1
+
+lichess <- read.pgn("pgns/lichess_elatedjuvenile_2020-12-01.pgn", 
+                    add.tags = c("WhiteElo", "BlackElo", "ECO",
+                                 "TimeControl", "SetUp",
+                                 "Termination"),
+                    extract.moves = 10,
+                    quiet = TRUE) %>%
+  mutate(website = "Lichess") %>%
+  filter(is.na(SetUp)) %>%
+  filter(NMoves != 0) %>%
+  filter(TimeControl != "-") %>%
+  filter(!str_detect(Event, regex("crazyhouse", ignore_case = TRUE)) &
+         !str_detect(Event, regex("atomic", ignore_case = TRUE)) &
+         !str_detect(Event, regex("antichess", ignore_case = TRUE)) &
+         !str_detect(Event, regex("king of the hill", ignore_case = TRUE))) %>%
+  select(-c(Round, SetUp, complete.movetext))
+
+```
+
+
+```{r chess_com, cache = TRUE, message = FALSE}
+user <- "elatedjuvenile"
+json_file <- paste0("https://api.chess.com/pub/player/",user,"/games/archives")
+json_data <- fromJSON(paste(readLines(json_file), collapse=""))
+chess_com <- data.frame()
+for(i in json_data$archives)
+chess_com <- rbind(chess_com,read.pgn(paste0(i,"/pgn"), 
+                                      add.tags = c("WhiteElo", "BlackElo",
+                                                   "ECO", "TimeControl", 
+                                                   "SetUp", "Termination"),
+                                      extract.moves = 10,
+                                      quiet = TRUE))
+
+chess_com <- chess_com %>%
+  mutate(website = "Chess.com") %>%
+  filter(is.na(SetUp)) %>%
+  filter(NMoves != 0) %>%
+  filter(Event == "Live Chess") %>%
+  select(-c(Round, SetUp, complete.movetext))
+
+# To see all values of a column, do something like table(lichess$Event) in console.
+# To see unique values in a column, use unique(lichess$format) or similar.
+```
+
+```{r function-writing}
+# Lichess and Chess.com use formulas involving your initial time and subsequent
+# increment in order to determine what category a particular game is: Bullet,
+# Blitz, Rapid, or Classical. This function filters each game into the correct
+# category.
+# The formula is: (clock initial time) + 40 * (clock increment), and the
+# categories are:
+# <=30s UltraBullet
+# <=180s Bullet
+# <= 480s Blitz
+# <= 1500s Rapid
+# > 1500s Classical
+
+# See https://lichess.org/faq#time-controls for more.
+
+correct_time_control <- function(data){
+  data <- data %>%
+    mutate(time_control = str_split(TimeControl, "\\+")) %>%
+    mutate(time_control1 = map_dbl(time_control, ~ as.numeric(.[1])),
+           time_control2 = map_dbl(time_control, ~ as.numeric(.[2]))) %>%
+    mutate(format = case_when(time_control1 + 40 * time_control2 < 180 ~ "Bullet",
+                              time_control1 + 40 * time_control2 < 480 ~ "Blitz",
+                              time_control1 + 40 * time_control2 < 1500 ~ "Rapid",
+                              1500 <= (time_control1 + 40 * time_control2) ~ "Classical",
+                              time_control1 < 180 ~ "Bullet",
+                              time_control1 < 480 ~ "Blitz",
+                              time_control1 < 1500 ~ "Rapid",
+                              1500 <= time_control1 ~ "Classical",
+                              TRUE ~ "Other")) %>%
+    select(-c(time_control, time_control1, time_control2))
+  
+  return(data)
+}
+```
+
+
+```{r correcting}
+lichess <- correct_time_control(lichess)
+chess_com <- correct_time_control(chess_com)
+```
+
+
+```{r joining, cache=TRUE}
+# Binding
+
+all_games <- rbind(lichess, chess_com) %>%
+  mutate(my_elo = if_else(White == "elatedjuvenile", WhiteElo, BlackElo),
+         opp_elo = if_else(White == "elatedjuvenile", BlackElo, WhiteElo),
+         elo_diff = my_elo - opp_elo,
+         me_white = if_else(White == "elatedjuvenile", TRUE, FALSE),
+         outcome = case_when(me_white & Result == "1-0" ~ 1,
+                             me_white & Result == "0-1" ~ 0,
+                             !me_white & Result == "0-1" ~ 1,
+                             !me_white & Result == "1-0" ~ 0,
+                             TRUE ~ 0.5),
+         format = factor(format, levels = c("Bullet", "Blitz", 
+                                            "Rapid", "Classical")),
+         Date = ymd(Date))
+
+# Splitting openings into subcategories
+
+all_games <- all_games %>% 
+  separate(ECO,
+           into = c("ECO_letter", "ECO_num"),
+           sep = "(?<=[A-Za-z])(?=[0-9])",
+           remove = FALSE) %>% 
+  mutate(ECO_num = as.numeric(ECO_num)) %>% 
+  mutate(ECO_category = case_when(ECO_letter == "A" & between(ECO_num, 0, 39) ~ "A00-A39",
+                                  ECO_letter == "A" & between(ECO_num, 40, 44) ~ "A40-A44",
+                                  ECO_letter == "A" & between(ECO_num, 45, 49) ~ "A45-A49",
+                                  ECO_letter == "A" & between(ECO_num, 50, 79) ~ "A50-A79",
+                                  ECO_letter == "A" & between(ECO_num, 80, 99) ~ "A80-A99",
+                                  ECO_letter == "B" & between(ECO_num, 0, 9) ~ "B00-B09",
+                                  ECO_letter == "B" & between(ECO_num, 10, 19) ~ "B10-B19",
+                                  ECO_letter == "B" & between(ECO_num, 20, 99) ~ "B20-B99",
+                                  ECO_letter == "C" & between(ECO_num, 0, 19) ~ "C00-C19",
+                                  ECO_letter == "C" & between(ECO_num, 20, 29) ~ "C20-C29",
+                                  ECO_letter == "C" & between(ECO_num, 30, 39) ~ "C30-C39",
+                                  ECO_letter == "C" & between(ECO_num, 40, 59) ~ "C40-C59",
+                                  ECO_letter == "C" & between(ECO_num, 60, 99) ~ "C60-C99",
+                                  ECO_letter == "D" & between(ECO_num, 0, 69) ~ "D00-D69",
+                                  ECO_letter == "D" & between(ECO_num, 70, 99) ~ "D70-D99",
+                                  ECO_letter == "E" & between(ECO_num, 0, 59) ~ "E00-E59",
+                                  ECO_letter == "E" & between(ECO_num, 60, 99) ~ "E60-E99"))
+
+all_games_dense <- all_games %>% 
+  select(-c(W1:R_moves))
+
+saveRDS(all_games, file = "all_games.RDS")
+saveRDS(all_games_dense, file = "all_games_dense.RDS")
+
+# How to output as RDS file:
+# saveRDS(all_games, file = "all_games.RDS")
+```
+
+```{r cleaning}
+all_games_dense %>% 
+  group_by(ECO) %>% 
+  summarize(popularity = n()) %>% 
+  arrange(desc(popularity)) %>% 
+  ggplot(aes(x = fct_reorder(ECO, popularity), y = popularity)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 3))
+
+# I want to find a way to include opening in my model, but it's quite difficult.
+# Ask Mitchell!
+```
+
+```{r unimportant}
+lichess_white <- lichess %>%
+  filter(White == "elatedjuvenile") %>%
+  mutate(result_log = case_when(Result == "1-0" ~ 1,
+                                Result == "1/2-1/2" ~ 0.5,
+                                Result == "0-1" ~ 0)) %>%
+  summarize(win_percentage = sum(result_log) / n())
+
+lichess_black <- lichess %>%
+  filter(Black == "elatedjuvenile") %>%
+  mutate(result_log = case_when(Result == "1-0" ~ 0,
+                                Result == "1/2-1/2" ~ 0.5,
+                                Result == "0-1" ~ 1)) %>%
+  summarize(win_percentage = sum(result_log) / n())
+
+chess_com_white <- chess_com %>%
+  filter(White == "elatedjuvenile") %>%
+  mutate(result_log = case_when(Result == "1-0" ~ 1,
+                                Result == "1/2-1/2" ~ 0.5,
+                                Result == "0-1" ~ 0)) %>%
+  summarize(win_percentage = sum(result_log) / n())
+
+chess_com_black <- chess_com %>%
+  filter(Black == "elatedjuvenile") %>%
+  mutate(result_log = case_when(Result == "1-0" ~ 0,
+                                Result == "1/2-1/2" ~ 0.5,
+                                Result == "0-1" ~ 1)) %>%
+  summarize(win_percentage = sum(result_log) / n())
+
+lichess_white
+lichess_black
+chess_com_white
+chess_com_black
+```
+
+
