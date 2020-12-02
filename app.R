@@ -100,7 +100,7 @@ ui <- navbarPage(
              h3("About Me"),
              p("My name is Nick Brinkmann and I study Applied Mathematics in the Class of 2023. 
              You can reach me at nickbrinkmann@college.harvard.edu."),
-             p("My Github repo  for this Milestone can be found at: https://github.com/nick-brinkmann/milestone-4.")
+             p("My Github repo  for this Milestone can be found at: https://github.com/nick-brinkmann/best-to-test.")
              )
     )
 
