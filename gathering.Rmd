@@ -119,7 +119,8 @@ all_games <- rbind(lichess, chess_com) %>%
                              TRUE ~ 0.5),
          format = factor(format, levels = c("Bullet", "Blitz", 
                                             "Rapid", "Classical")),
-         Date = ymd(Date))
+         Date = ymd(Date),
+         month = floor_date(Date, "month"))
 
 # Splitting openings into subcategories
 
@@ -204,5 +205,6 @@ lichess_black
 chess_com_white
 chess_com_black
 ```
+
 
 

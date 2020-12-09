@@ -8,23 +8,158 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(rstanarm)
+library(tidyverse)
+all_games_dense <- readRDS("all_games_dense.RDS")
 ```
 
-```{r outcomes_model, cache = TRUE}
-all_games_dense <- readRDS("all_games_dense.RDS")
+```{r filtering}
+model_data <- all_games_dense %>% 
+  group_by(ECO) %>% 
+  mutate(ECO_count = n()) %>%
+  filter(ECO_count >= 50) %>% 
+  mutate(ECO = factor(ECO))
+```
 
-outcomes_model <- stan_glm(formula = outcome ~ me_white + elo_diff + NMoves + 
-                             format + ECO_category:me_white,
+
+```{r outcomes_model, cache = TRUE}
+
+outcomes_model <- stan_glm(formula = outcome ~ elo_diff + ECO_category:me_white - 1,
          data = all_games_dense,
          refresh = 0)
 ```
 
+
+```{r tbl_making}
+tbl_ngames <- all_games_dense %>% 
+  group_by(ECO_category, me_white) %>% 
+  summarize(count = n())
+```
+
 ```{r}
-print(outcomes_model, digits = 6)
+tbl_med <- outcomes_model %>% 
+  as_tibble() %>% 
+  summarize_all(median) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "opening",
+               values_to = "score") %>% 
+  filter(opening != "elo_diff")
+
+tbl_err <- posterior_interval(outcomes_model) %>% 
+  as_tibble(rownames = "opening")
+
+tbl_joined <- inner_join(tbl_med, tbl_err, by = "opening") %>% 
+  filter(opening != "sigma") %>% 
+  arrange(score)
+
+tbl_joined$opening <- factor(tbl_joined$opening)
+
+tbl_joined <- tbl_joined %>% 
+  mutate(opening = str_split(opening, "ECO_category"), n = 1) %>% 
+  mutate(opening = map_chr(opening, ~ .[2])) %>% 
+  mutate(opening = str_split(opening, ":me_")) %>% 
+  mutate(opening = map_chr(opening, ~ paste(.[1], .[2], sep = ", "))) %>% 
+  mutate(opening = str_replace(opening, "whiteFALSE", "Black")) %>% 
+  mutate(opening = str_replace(opening, "whiteTRUE", "White")) %>% 
+  filter(opening != "A80-A99, Black")
 ```
 
 
-```{r elo_model, cache = TRUE}
-elo_model <- stan_glm(formula = my_elo ~ Date + )
+
+```{r}
+tbl_joined %>% 
+  ggplot() +
+  geom_point(aes(x = fct_reorder(opening, score), y = score)) +
+  geom_errorbar(aes(x = fct_reorder(opening, score), 
+                    ymin = `5%`,
+                    ymax = `95%`,
+                    color = "red"),
+                size = 0.25) +
+  geom_hline(yintercept = 0.53357, lty = "dashed", color = "dodgerblue") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_classic() +
+  theme(axis.text.x = element_text(size = 9),
+        legend.position = "none") +
+  labs(title = "Success in Groups of Similar Openings, By Color",
+       subtitle = "After rating differences accounted for",
+       x = "",
+       y = "Score",
+       caption = "Error bars give centered 90% Confidence Interval. Note A80-A99, Black
+       removed due to huge uncertainty.") + 
+  coord_flip()
+
+ggsave(filename = "lumped_openings.png")
 ```
+# INDIVIDUAL OPENINGS MODEL
+
+```{r, cache = TRUE}
+openings_to_model <- all_games_dense %>% 
+  group_by(ECO, me_white) %>%
+  summarize(count = n()) %>% 
+  pivot_wider(names_from = me_white,
+              values_from = count) %>% 
+  rename(black_count = "FALSE", white_count = "TRUE") %>% 
+  filter(black_count >= 10 & white_count >= 10)
+
+length(openings_to_model$ECO)
+```
+
+```{r imp_gms, cache = TRUE}
+gms_imp_op <- all_games_dense %>% 
+  filter(ECO %in% openings_to_model$ECO)
+```
+
+```{r indiv_op_model, cache = TRUE}
+indiv_op_model <- stan_glm(formula = outcome ~ elo_diff + me_white:ECO - 1,
+                           data = gms_imp_op,
+                           refresh = 0)
+```
+
+```{r, cache = TRUE}
+indiv_op_err <- posterior_interval(indiv_op_model) %>% 
+  as_tibble(rownames = "opening")
+
+indiv_op_err <- indiv_op_err %>% 
+  rename(lwr_bound = "5%", upr_bound = "95%") %>% 
+  filter(opening != "elo_diff" & opening != "sigma") %>% 
+  mutate(contains_avg = (lwr_bound <= 0.53357 & upr_bound >= 0.53357)) %>% 
+  filter(contains_avg == FALSE)
+
+all_medians <- indiv_op_model %>% 
+  as_tibble() %>% 
+  summarize_all(median) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "opening",
+               values_to = "score")
+
+indiv_op_err <- left_join(indiv_op_err, all_medians, by = "opening")
+
+indiv_op_err %>% 
+  ggplot(aes(x = fct_reorder(opening, score))) +
+  geom_point(aes(y = score)) +
+  geom_errorbar(aes(ymin = lwr_bound, ymax = upr_bound, color = "red"), size = 0.5) +
+  geom_hline(yintercept = 0.53357, lty = "dashed", color = "dodgerblue") +
+  ylim(0, 1) +
+  theme_classic() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_discrete(labels = c("Sicilian Defence (B32), Black",
+                            "Scotch Game (C45), White",
+                            "Reti Opening (A06), Black",
+                            "King's Pawn Game (C44), Black",
+                            "French, Exchange Var. (C01), Black",
+                            "Scotch Game (C45), Black",
+                            "Queen's Pawn 2.Nf3 (D02), Black",
+                            "Unusual King's Pawn (B00), Black")) +
+  theme(legend.position = "none") +
+  labs(title = "Statistically Significant Deviations from Average Score",
+       subtitle = "Suggests Improvement Needed in Certain Openings",
+       x = "Opening & Color",
+       y = "Scoring Percentage",
+       caption = "Rating differences accounted for (i.e. intervals given for
+       equal rating between myself and opponent)") +
+  coord_flip()
+
+ggsave(filename = "stat_sig_openings.png")
+```
+
 

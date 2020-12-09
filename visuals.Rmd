@@ -12,15 +12,18 @@ library(gganimate)
 library(lubridate)
 library(ggrepel)
 library(wesanderson)
+library(ggthemes)
+library(rstanarm)
 ```
 
 ## Creating Visualizations
 ```{r}
 all_games <- readRDS("all_games.RDS")
+all_games_dense <- readRDS("all_games_dense.RDS")
 ```
 
 
-```{r elo_plot_smooth}
+```{r elo_plot_smoother}
 # Creating a plot using average Elo for each day, to mitigate large deviations
 # in rating over a single day. Makes plot smoother
 
@@ -48,24 +51,28 @@ anim_save("smoother_elo_plot.gif")
 ```
 
 
-```{r elo_plot}
+```{r smoothest_elo_plot}
+
 # Elo vs time
 
-elo_plot <- all_games %>%
-  ggplot(aes(x = Date, 
-             y = my_elo,
+all_games %>%
+  group_by(month, website, format) %>% 
+  summarize(elo_avg = mean(my_elo), .groups = "keep") %>% 
+  ggplot(aes(x = month, 
+             y = elo_avg,
                  group = format,
                  color = factor(format))) +
   geom_line(na.rm = TRUE) +
   facet_wrap(~ website) +
   labs(title = "Elo Rating Over Time, by Website and Time Control", 
        y = "Elo Rating",
-       caption = "Source: Self-collected data") +
+       caption = "Ratings taken as monthly averages") +
   ylim(1200,2200) +
   theme_bw() +
   scale_color_discrete(name = "Format") +
-  transition_reveal(Date)
+  transition_reveal(month)
 
+anim_save(filename = "smoothest_elo_plot.gif")
 ```
 
 
@@ -106,10 +113,10 @@ ggplot(data = black_openings) +
 ```
 
 ```{r best_worst_openings}
-all_games %>% 
+all_games_dense %>% 
   summarize(score = mean(outcome))
 
-all_games %>% 
+all_games_dense %>% 
   group_by(ECO, ECO_letter) %>% 
   summarize(avg_score = mean(outcome),
             count = n()) %>% 
@@ -136,18 +143,161 @@ all_games %>%
 ggsave(filename = "openings.png")
 ```
 
-```{r}
-all_games %>% 
-  filter(ECO == "B34")
+```{r, cache = TRUE}
+# Trying to see what distribution of games outcomes is.
+elo_fit <- stan_glm(formula = outcome ~ elo_diff,
+         data = all_games_dense,
+         refresh = 0)
+
+new_data = tibble(elo_diff = -200:200)
+```
+
+```{r, cache = TRUE}
+posterior_predict(elo_fit,
+                  newdata = new_data) %>% 
+  as_tibble() %>% 
+  mutate_all(as.numeric) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "elo_diff",
+               values_to = "pred") %>%
+  mutate(elo_diff = as.numeric(elo_diff) - 201) %>%
+  ggplot(aes(x = elo_diff, y = pred)) +
+  geom_density_2d_filled()
+```    
+
+
+```{r handpicked_openings}
+handpicked <- all_games_dense %>% 
+  filter(ECO %in% c("B01",
+                    "D02",
+                    "B20",
+                    "D32",
+                    "D06",
+                    "C45",
+                    "C53",
+                    "C55",
+                    "C11",
+                    "B34",
+                    "D01",
+                    "D03",
+                    "C20",
+                    "C10"))
+
+handpicked <- handpicked %>% 
+  group_by(ECO, me_white) %>% 
+  summarize(avg_score = mean(outcome),
+            num_games = n())
+  
+handpicked %>% 
+  ggplot(aes(x = num_games, y = avg_score, color = me_white)) +
+  geom_text_repel(aes(label = ECO), size = 2)
+
 ```
 
 
+```{r time_series, cache = TRUE}
+all_games_dense %>% 
+  group_by(month) %>% 
+  summarize(count = n(),
+            .groups = "keep") %>% 
+  ggplot(aes(x = month, y = count, fill = count)) +
+  geom_col() +
+  labs(title = "Games Played Per Month",
+       subtitle = "Since First Account Opened in 2018",
+       x = "",
+       y = "Number of Games Played") +
+  theme_economist() +
+  theme(panel.grid = element_blank(),
+        panel.grid.major.y = element_line(color = "white"),
+        panel.ontop = TRUE,
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45)) +
+  scale_x_date(date_breaks = "4 months",
+               date_labels = "%b-%Y") +
+  transition_states(month, wrap = FALSE) +
+  shadow_mark() +
+  enter_grow() +
+  enter_fade()
+
+anim_save(filename = "game_count.gif")
+```
+
+```{r time_series2}
+all_games_dense %>% 
+  group_by(month) %>% 
+  summarize(win_pct = mean(outcome),
+            count = n()) %>% 
+  ggplot(aes(x = month, y = win_pct, fill = count)) +
+  geom_col() +
+  labs(title = "Win Percentage Per Month",
+       subtitle = "Since First Account Opened in 2018",
+       x = "",
+       y = "Win Rate") +
+  theme_economist() +
+  theme(panel.grid = element_blank(),
+        panel.grid.major.y = element_line(color = "white"),
+        panel.ontop = TRUE,
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45)) +
+  scale_x_date(date_breaks = "4 months",
+               date_labels = "%b-%Y") +
+  scale_y_continuous(labels = scales::percent_format())
+  #transition_states(month, wrap = FALSE) +
+  #shadow_mark() +
+  #enter_grow() +
+  #enter_fade()
+
+#anim_save(filename = "game_count.gif")
 
 
+```
 
+$$performance\_rating = \frac{sum(opp\_rating) + 400(num\_wins - num\_losses)}{num\_games} $$
 
+```{r elo_performance}
+# perf_rating <- function(data, month){
+#   data %>% 
+#     group_by(month) %>% 
+#     summarize(sum_opp_elo= sum(opp_elo),
+#               total_score = sum(outcome),
+#               count = n(),
+#               elo_perf = (sum_opp_elo + 400*(2 * total_score - count))/count)
+# }
+# 
+# perf_rating(data = all_games_dense, month = month)
 
+all_games_dense %>%
+  mutate(quarter = floor_date(Date, "quarter")) %>% 
+  group_by(quarter, website, format) %>%
+  filter(!is.na(opp_elo)) %>% 
+  summarize(sum_opp_elo= sum(opp_elo),
+            total_score = sum(outcome),
+            num_games = n(),
+            elo_perf = (sum_opp_elo + 400*(2*total_score - num_games))/num_games,
+            .groups = "keep") %>%  
+  ggplot(aes(x = quarter, y = elo_perf, fill = num_games)) +
+  geom_col(position = position_dodge2(preserve = "single")) +
+  coord_cartesian(ylim = c(1000, 2200)) +
+  facet_wrap(~ website + format,
+              nrow = 2) +
+  labs(title = "Performance Rating By Website and Format Over Time",
+       subtitle = "Quarter Starting: {closest_state}",
+       x = "Quarter",
+       y = "Performance Rating (Elo/Glicko)") +
+  transition_states(quarter, wrap = FALSE) +
+  shadow_mark() +
+  enter_grow() +
+  enter_fade() +
+  ease_aes('linear')
 
+anim_save(filename = "quarter_perf.gif", end_pause = 100)
+
+```
+
+```{r}
+all_games_dense %>% 
+  filter(ECO == "C52" & !me_white)
+```
 
 
 
