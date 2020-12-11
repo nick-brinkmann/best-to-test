@@ -12,17 +12,9 @@ library(tidyverse)
 all_games_dense <- readRDS("all_games_dense.RDS")
 ```
 
-```{r filtering}
-model_data <- all_games_dense %>% 
-  group_by(ECO) %>% 
-  mutate(ECO_count = n()) %>%
-  filter(ECO_count >= 50) %>% 
-  mutate(ECO = factor(ECO))
-```
-
+## CATEGORY WIDE MODEL
 
 ```{r outcomes_model, cache = TRUE}
-
 outcomes_model <- stan_glm(formula = outcome ~ elo_diff + ECO_category:me_white - 1,
          data = all_games_dense,
          refresh = 0)
@@ -32,7 +24,7 @@ outcomes_model <- stan_glm(formula = outcome ~ elo_diff + ECO_category:me_white 
 ```{r tbl_making}
 tbl_ngames <- all_games_dense %>% 
   group_by(ECO_category, me_white) %>% 
-  summarize(count = n())
+  summarize(count = n(), .groups = "keep")
 ```
 
 ```{r}
@@ -62,8 +54,6 @@ tbl_joined <- tbl_joined %>%
   mutate(opening = str_replace(opening, "whiteTRUE", "White")) %>% 
   filter(opening != "A80-A99, Black")
 ```
-
-
 
 ```{r}
 tbl_joined %>% 
@@ -95,14 +85,14 @@ ggsave(filename = "lumped_openings.png")
 ```{r, cache = TRUE}
 openings_to_model <- all_games_dense %>% 
   group_by(ECO, me_white) %>%
-  summarize(count = n()) %>% 
+  summarize(count = n(), .groups = "keep") %>% 
   pivot_wider(names_from = me_white,
               values_from = count) %>% 
   rename(black_count = "FALSE", white_count = "TRUE") %>% 
   filter(black_count >= 10 & white_count >= 10)
 
-length(openings_to_model$ECO)
 ```
+
 
 ```{r imp_gms, cache = TRUE}
 gms_imp_op <- all_games_dense %>% 

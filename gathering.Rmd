@@ -146,7 +146,8 @@ all_games <- all_games %>%
                                   ECO_letter == "D" & between(ECO_num, 0, 69) ~ "D00-D69",
                                   ECO_letter == "D" & between(ECO_num, 70, 99) ~ "D70-D99",
                                   ECO_letter == "E" & between(ECO_num, 0, 59) ~ "E00-E59",
-                                  ECO_letter == "E" & between(ECO_num, 60, 99) ~ "E60-E99"))
+                                  ECO_letter == "E" & between(ECO_num, 60, 99) ~ "E60-E99"),
+         id = seq(1, nrow(all_games)))
 
 all_games_dense <- all_games %>% 
   select(-c(W1:R_moves))
@@ -158,18 +159,6 @@ saveRDS(all_games_dense, file = "all_games_dense.RDS")
 # saveRDS(all_games, file = "all_games.RDS")
 ```
 
-```{r cleaning}
-all_games_dense %>% 
-  group_by(ECO) %>% 
-  summarize(popularity = n()) %>% 
-  arrange(desc(popularity)) %>% 
-  ggplot(aes(x = fct_reorder(ECO, popularity), y = popularity)) +
-  geom_col() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 3))
-
-# I want to find a way to include opening in my model, but it's quite difficult.
-# Ask Mitchell!
-```
 
 ```{r unimportant}
 lichess_white <- lichess %>%
@@ -206,5 +195,35 @@ chess_com_white
 chess_com_black
 ```
 
+```{r}
+all_games_dense$Movetext[1] %>% 
+  extract_moves(N = 120) %>% 
+  select(-c(last.move, complete.movetext)) %>% 
+  pivot_longer(cols = everything()) %>% 
+  drop_na(value) %>% 
+  mutate(value = as.character(value))
+```
+
+```{r}
+    output$board <- renderChessboardjs({
+        #chessboardjs("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2")
+        chss <- Chess$new()
+        
+        # tbl_mvs <- all_games_dense$Movetext[1] %>% 
+        #     extract_moves(N = 120) %>% 
+        #     select(-c(last.move, complete.movetext)) %>% 
+        #     pivot_longer(cols = everything()) %>% 
+        #     drop_na(value) %>% 
+        #     mutate(value = as.character(value))
+        # 
+        # for(i in 1:nrow(tbl_mvs)){
+        #     chss$move(tbl_mvs$value[i])
+        #     #Sys.sleep(1)
+        # }
+        
+        chss$move("a3")$move("b5")
+
+    })
+```
 
 

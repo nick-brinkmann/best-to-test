@@ -255,16 +255,6 @@ all_games_dense %>%
 $$performance\_rating = \frac{sum(opp\_rating) + 400(num\_wins - num\_losses)}{num\_games} $$
 
 ```{r elo_performance}
-# perf_rating <- function(data, month){
-#   data %>% 
-#     group_by(month) %>% 
-#     summarize(sum_opp_elo= sum(opp_elo),
-#               total_score = sum(outcome),
-#               count = n(),
-#               elo_perf = (sum_opp_elo + 400*(2 * total_score - count))/count)
-# }
-# 
-# perf_rating(data = all_games_dense, month = month)
 
 all_games_dense %>%
   mutate(quarter = floor_date(Date, "quarter")) %>% 
@@ -294,10 +284,6 @@ anim_save(filename = "quarter_perf.gif", end_pause = 100)
 
 ```
 
-```{r}
-all_games_dense %>% 
-  filter(ECO == "C52" & !me_white)
-```
 
 
 

@@ -1,24 +1,20 @@
 library(shiny)
 library(shinythemes)
 library(tidyverse)
-library(gganimate)
 library(dplyr)
 library(lubridate)
-library(rchess)
-library(gt)
 library(DT)
+library(rchess)
+library(toOrdinal)
 
 all_games_dense <- readRDS("all_games_dense.RDS")
 
-#chss <- Chess$new()
-#chss$move("a3")$move("b5")
-#chss$fen()
-
-#chsspgn$load_pgn(pgn)
 
 # USER INTERFACE
 
 ui <- navbarPage(
+    id = "panel",
+    # useShinyjs(),
     theme = shinytheme("united"),
     "Best To Test: Analyzing My Online Chess Games",
     
@@ -26,7 +22,7 @@ ui <- navbarPage(
     
     tabPanel("Home",
              fluidPage(
-                 titlePanel("Pre-Made Visualizations"),
+                 titlePanel("Visualizations"),
                  sidebarLayout(
                      sidebarPanel(
                          radioButtons("radio_plot", label = h3("Select Plot"),
@@ -140,7 +136,24 @@ ui <- navbarPage(
                            reason I made the lumped model (click on the Lumped Model
                            radio button to the left!).
                            However, the lumped model also has significant issues,
-                           which are addressed in that section.")
+                           which are addressed in that section."),
+                             
+                             h3("Formula"),
+                             p("For the curious, the mathematical formula for the
+                               model is something like"),
+                             
+                             withMathJax(),
+                             helpText("$$ outcome \\_ i = \\beta_0 rating \\_ diff_i
+                                      + \\beta_1 A00_i white_i + \\beta_2 A00_i 
+                                      black_i + \\ldots + \\beta_{n-1} E99_i white_i
+                                      + \\beta_{n} E99_i black_i$$"),
+                             
+                             p("where outcome_i is 0 for a loss, 0.5 for a draw,
+                               and 1 for a win; rating_diff is the rating difference
+                               between my opponent and me (positive if my rating
+                               is higher); and all the opening and color variables
+                               are indicators (0 or 1). A nearly identical formula
+                               applies for the other model.")
                          ),
                          
                          conditionalPanel(
@@ -151,7 +164,12 @@ ui <- navbarPage(
                            into roughly homogeneous groups, and tried to predict
                            my average score based on the opening group and the 
                            color I play. Only four of the groups deviate with 95% 
-                           confidence from my average score."),
+                           confidence from my average score. (Note that the groups
+                               roughly conform to groups given in the Wikipedia
+                               article on ECO codes, found", 
+                               tags$a(href = "https://en.wikipedia.org/wiki/List_of_chess_openings",
+                                      "here"),
+                               ")."),
                              p("The first is the group A50-A79 when I play with the 
                            black pieces. This group corresponds with what are known
                            as 'Atypical Indian systems' in the Encyclopedia of 
@@ -236,12 +254,13 @@ ui <- navbarPage(
              
              h3("Auxiliary Info"),
              p("The R package 'bigchess' allowed me to download all of my games
-               directly. Some cleaning was necessary, but overall it was a
-               very useful package."),
+               directly from Lichess and Chess.com. Some cleaning was necessary
+               for my purposes, but it was an invaluable package."),
              
              h3("About Me"),
-             p("Hello! My name is Nick Brinkmann and I study Applied Mathematics in the Class of 2023. 
-             You can reach me at nickbrinkmann at college.harvard.edu"),
+             p("Hello! My name is Nick Brinkmann and I study Applied Mathematics
+             in the Class of 2023 at Harvard College. 
+             You can reach me at nickbrinkmann@college.harvard.edu."),
              p("I have been a chess enthusiast since I learned the game at the age of 6.
                Following a competitive stint in my early youth, I took a long hiatus from the game,
                and only became seriously interested in chess again in 2018. At that point,
@@ -265,32 +284,6 @@ ui <- navbarPage(
              
              
     ),
-    
-    # Interactive PANEL
-    
-    # tabPanel("Interactive Plots",
-    #          fluidPage(
-    #              titlePanel("Interactive Plots"),
-    #              sidebarLayout(
-    #                  sidebarPanel(
-    #                      sliderInput("date",
-    #                                  "Starting date: ",
-    #                                  min = min(all_games$Date),
-    #                                  max = max(all_games$Date),
-    #                                  value = min(all_games$Date)
-    #                      ),
-    #                      sliderInput("start_end",
-    #                                  label = h3("Start and End Date"),
-    #                                  min = min(all_games$Date),
-    #                                  max = max(all_games$Date),
-    #                                  value = c(min(all_games$Date), max(all_games$Date))
-    #                      )
-    #                  ),
-    #                  #mainPanel(chessboardjsOutput('board', width = 300)))
-    #                  p("To be completed still.")
-    #              )
-    #          )
-    # ),
     
     # BACKGROUND PANEL
     
@@ -355,29 +348,29 @@ ui <- navbarPage(
                about 200 points lower on Chess.com, and around 1700-1800 OTB."),
              p("A common metric for measuring how well someone played in a tournament
                or over some time period is known as their 'performance rating'.
-               Performance ratings are calculated by a formula which you can find ",
+               Performance ratings are calculated by a formula which you can find 
+               more information on ",
                tags$a(href = "https://en.wikipedia.org/wiki/Elo_rating_system#Performance_rating",
                       "here"),
-             ". I used this formula briefly in determining my performance ratings
-             over time in the Home panel.")
+             ". I used the following formula in determining my performance ratings
+             over time in the Home panel: "),
+             withMathJax(),
+             helpText("$$performance \\_rating = \\frac{sum(opponent \\_ rating) 
+                      + 400 (number \\_ wins - number \\_ losses)}{total \\_ games} $$"),
              
     ),
     
-    # PLAY THROUGH GAMES
+    # GAMES DATABASE
     
     tabPanel("Games Database",
         fluidPage(
-        titlePanel("Play Through Games"),
+        titlePanel("Peruse My Games"),
         p("In the extremely unlikely case that you have any interest in browsing
           my games, here they all are! Since the dataset is so large, this only
-          loads games from one month at a time."),
+          loads games from one month at a time. If you find a game you like,
+          remember the Game ID and enter it in the next tab to play through the
+          game!"),
         
-                # sliderInput("start_end",
-                #             label = h3("Start and End Date"),
-                #             min = min(all_games$Date),
-                #             max = max(all_games$Date),
-                #             value = c(as.Date("2020-10-01"), as.Date("2020-12-01"))
-                # ),
         
         selectInput(
             "month",
@@ -389,17 +382,49 @@ ui <- navbarPage(
         DT::dataTableOutput("table")
 
 
-                # gt_output("table")
-
-
         
 
 
     )
              
+    ),
+    
+    # PLAY THROUGH GAMES PANEL
+    
+    tabPanel("Play Through Games",
+             fluidPage(
+                 titlePanel("Play Through My Games!"),
+                 sidebarLayout(
+                     sidebarPanel(
+                         
+                         numericInput("gameId", 
+                                      label = "Input Game ID (from Database Tab),
+                                      No Greater than 9006 (the number of games
+                                      overall)",
+                                      min = 1,
+                                      max = nrow(all_games_dense),
+                                      value = 1,
+                                      step = 1)
+                         
+                     ),
+                     mainPanel(
+                         actionButton("next_move", label = "Next Move"),
+                         
+                         actionButton("reset", label = "Reset Game"),
+                         
+                         textOutput("count"),
+                         
+                         textOutput("black"),
+
+                         chessboardjsOutput('board', width = 400),
+                         
+                         textOutput("white")
+                         )
+                     )
+                 )
+             )
     )
     
-)
 
 
 # Define server logic
@@ -410,8 +435,8 @@ server <- function(input, output) {
     
     output$vis_plot <- renderImage({
         list(src = input$radio_plot,
-             width = 500,
-             height = 500)
+             width = 600,
+             height = 600)
     }, deleteFile = FALSE)
     
     # MODEL PLOT
@@ -423,53 +448,89 @@ server <- function(input, output) {
         )
     }, deleteFile = FALSE)
     
-    # GAMES DATABASE TABLE
-    # output$table <- render_gt(
-    #     expr = all_games %>% 
-    #         select(White, Black, my_elo, Result, Movetext, Date) %>%
-    #         filter(Date >= input$start_end[1] & Date <= input$start_end[2]) %>% 
-    #         gt() %>% 
-    #         cols_width(
-    #             starts_with("Movetext") ~ px(300),
-    #             starts_with("White") ~ px(150),
-    #             starts_with("Black") ~ px(150),
-    #             everything() ~ px(100)
-    #         ),
-    #     height = px(1000),
-    #     width = px(1000)
-    #     )
-    
-    # output$table <- render_gt(
-    #     expr = all_games %>%
-    #         filter(month == input$month) %>%
-    #         select(White, Black, my_elo, Result, Movetext, Date) %>%
-    #         gt() %>%
-    #         cols_width(
-    #             starts_with("Movetext") ~ px(300),
-    #             starts_with("White") ~ px(150),
-    #             starts_with("Black") ~ px(150),
-    #             everything() ~ px(100)
-    #         ),
-    #     height = px(1000),
-    #     width = px(1000)
-    #     )
+    # DATABASE OF GAMES
     
     output$table <- DT::renderDataTable(DT::datatable({
         all_games_dense %>%
             filter(month == input$month) %>% 
-            select(White, Black, my_elo, Result, Movetext, Date, format, website)
+            select(id, White, Black, my_elo, Result, Movetext, Date, format, website)
     }))
     
-    
-    # RENDERING CHESS BOARD
+    # RENDER BOARD
+
+move_counter <- reactiveValues(countervalue = 0)
+
+observeEvent(input$next_move, {
+    move_counter$countervalue <- move_counter$countervalue + 1
+})
+
+observeEvent(input$reset, {
+    move_counter$countervalue <- 0
+})
+
+output$count <- renderText({
+    paste("It is ", 
+          if((move_counter$countervalue / 2) %% 1 == 0){
+              "White"
+          } else{
+              "Black"
+          }, "to move.",
+          "It will be their",
+          toOrdinal(floor(move_counter$countervalue / 2) + 1), 
+          "move.")
+})
+
+output$white <- renderText({
+    paste(all_games_dense$White[input$gameId],
+          ", with a rating of",
+          all_games_dense$WhiteElo[input$gameId],
+          ", is playing White.")
+})
+
+output$black <- renderText({
+    paste(all_games_dense$Black[input$gameId],
+          ", with a rating of",
+          all_games_dense$BlackElo[input$gameId],
+          ", is playing Black.")
+})
+
+
+observeEvent(input$gameId, {
+    # if(is.na(input$gameId)){
+    #     input$gameId = 1
+    # }
+
+    move_counter$countervalue <- 0
+    chss$board <- Chess$new()
+
+})
+
+    chss <- reactiveValues(board = Chess$new())
+
     
     output$board <- renderChessboardjs({
-        #chessboardjs("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2")
-        chss <- Chess$new()
-        chss$move("a3")$move("b5")
-        chessboardjs(chss$fen())
+
+        tbl_mvs <- all_games_dense$Movetext[input$gameId] %>%
+            extract_moves(N = 120) %>%
+            select(-c(last.move, complete.movetext)) %>%
+            pivot_longer(cols = everything()) %>%
+            drop_na(value) %>%
+            mutate(value = as.character(value))
+        
+        if(move_counter$countervalue == 0){
+            chss$board <- Chess$new()
+        }
+
+        else if(move_counter$countervalue <= nrow(tbl_mvs)){
+            chss$board$move(tbl_mvs$value[move_counter$countervalue])
+        }
+        
+
+        chessboardjs(chss$board$fen())
     })
 }
+
+
 
 # Run the application 
 
