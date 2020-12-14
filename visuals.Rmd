@@ -29,7 +29,7 @@ all_games_dense <- readRDS("all_games_dense.RDS")
 
 elo_by_day <- all_games %>% 
   group_by(Date, website, format) %>% 
-  summarize(avg_daily_elo = mean(my_elo))
+  summarize(avg_daily_elo = mean(my_elo), .groups = "keep")
 
 elo_by_day %>% 
 ggplot(aes(x = Date, 
@@ -45,6 +45,7 @@ ggplot(aes(x = Date,
   theme_bw() +
   scale_color_discrete(name = "Format") +
   transition_reveal(Date)
+
 ```
 ```{r}
 anim_save("smoother_elo_plot.gif")
@@ -53,7 +54,7 @@ anim_save("smoother_elo_plot.gif")
 
 ```{r smoothest_elo_plot}
 
-# Elo vs time
+# Elo vs time (monthly average)
 
 all_games %>%
   group_by(month, website, format) %>% 
@@ -81,7 +82,7 @@ anim_save(filename = "smoothest_elo_plot.gif")
 
 openings <- all_games %>% 
   group_by(me_white, ECO) %>% 
-  summarize(count = n()) %>% 
+  summarize(count = n(), .groups = "keep") %>% 
   arrange(desc(count)) %>% 
   slice(1:15)
 
@@ -91,28 +92,12 @@ openings <- all_games %>%
   geom_col(position = position_dodge2(preserve = "single")) +
   theme(axis.text.x = element_text(angle = 90))
 ```
-```{r}
-# UNNECESSARY
 
-white_openings <- openings %>% 
-  filter(me_white) %>% 
-  droplevels()
-
-black_openings <- openings %>% 
-  filter(!me_white) %>% 
-  droplevels()
-
-
-ggplot(data = white_openings) +
-  geom_col(data = white_openings,
-           mapping = aes(x = fct_reorder(ECO, desc(count)), y = count))
-
-ggplot(data = black_openings) + 
-  geom_col(data = black_openings,
-           mapping = aes(x = fct_reorder(ECO, desc(count)), y = count))
-```
 
 ```{r best_worst_openings}
+
+# Opening success plot
+
 all_games_dense %>% 
   summarize(score = mean(outcome))
 
@@ -144,15 +129,16 @@ ggsave(filename = "openings.png")
 ```
 
 ```{r, cache = TRUE}
-# Trying to see what distribution of games outcomes is.
+
+# Trying to see what distribution of games outcomes is. Maybe for further work;
+# not included in current project.
+
 elo_fit <- stan_glm(formula = outcome ~ elo_diff,
          data = all_games_dense,
          refresh = 0)
 
 new_data = tibble(elo_diff = -200:200)
-```
 
-```{r, cache = TRUE}
 posterior_predict(elo_fit,
                   newdata = new_data) %>% 
   as_tibble() %>% 
@@ -167,6 +153,9 @@ posterior_predict(elo_fit,
 
 
 ```{r handpicked_openings}
+
+# Openings that appear to deviate. Not included in current project.
+
 handpicked <- all_games_dense %>% 
   filter(ECO %in% c("B01",
                     "D02",
@@ -196,6 +185,9 @@ handpicked %>%
 
 
 ```{r time_series, cache = TRUE}
+
+# Total games played per month over time
+
 all_games_dense %>% 
   group_by(month) %>% 
   summarize(count = n(),
@@ -223,6 +215,9 @@ anim_save(filename = "game_count.gif")
 ```
 
 ```{r time_series2}
+
+# Win percentage over time. Not included as is.
+
 all_games_dense %>% 
   group_by(month) %>% 
   summarize(win_pct = mean(outcome),
@@ -242,12 +237,7 @@ all_games_dense %>%
   scale_x_date(date_breaks = "4 months",
                date_labels = "%b-%Y") +
   scale_y_continuous(labels = scales::percent_format())
-  #transition_states(month, wrap = FALSE) +
-  #shadow_mark() +
-  #enter_grow() +
-  #enter_fade()
-
-#anim_save(filename = "game_count.gif")
+  transition_states(month, wrap = FALSE)
 
 
 ```
@@ -255,6 +245,8 @@ all_games_dense %>%
 $$performance\_rating = \frac{sum(opp\_rating) + 400(num\_wins - num\_losses)}{num\_games} $$
 
 ```{r elo_performance}
+
+# Performance rating by quarter, website, time control.
 
 all_games_dense %>%
   mutate(quarter = floor_date(Date, "quarter")) %>% 

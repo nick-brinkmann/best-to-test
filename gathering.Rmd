@@ -15,9 +15,11 @@ library(tidyverse)
 
 ## DATA
 
-```{r lichess, cache = TRUE}
+```{r lichess, cache = TRUE, message = FALSE}
 # For an explanation of the PGN data format, see:
 # http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm#c8.1.1
+
+# Lichess allows direct data download from my profile; data was stored already.
 
 lichess <- read.pgn("pgns/lichess_elatedjuvenile_2020-12-01.pgn", 
                     add.tags = c("WhiteElo", "BlackElo", "ECO",
@@ -38,7 +40,10 @@ lichess <- read.pgn("pgns/lichess_elatedjuvenile_2020-12-01.pgn",
 ```
 
 
-```{r chess_com, cache = TRUE, message = FALSE}
+```{r chess_com, cache = TRUE, results = FALSE}
+
+# Scrapes data from my profile online.
+
 user <- "elatedjuvenile"
 json_file <- paste0("https://api.chess.com/pub/player/",user,"/games/archives")
 json_data <- fromJSON(paste(readLines(json_file), collapse=""))
@@ -51,6 +56,8 @@ chess_com <- rbind(chess_com,read.pgn(paste0(i,"/pgn"),
                                       extract.moves = 10,
                                       quiet = TRUE))
 
+# Adding/filtering some columns
+
 chess_com <- chess_com %>%
   mutate(website = "Chess.com") %>%
   filter(is.na(SetUp)) %>%
@@ -60,6 +67,7 @@ chess_com <- chess_com %>%
 
 # To see all values of a column, do something like table(lichess$Event) in console.
 # To see unique values in a column, use unique(lichess$format) or similar.
+
 ```
 
 ```{r function-writing}
@@ -99,13 +107,17 @@ correct_time_control <- function(data){
 
 
 ```{r correcting}
+
+# Categorizing by time control
+
 lichess <- correct_time_control(lichess)
 chess_com <- correct_time_control(chess_com)
 ```
 
 
 ```{r joining, cache=TRUE}
-# Binding
+
+# Binding datasets together, some cleaning
 
 all_games <- rbind(lichess, chess_com) %>%
   mutate(my_elo = if_else(White == "elatedjuvenile", WhiteElo, BlackElo),
@@ -122,7 +134,8 @@ all_games <- rbind(lichess, chess_com) %>%
          Date = ymd(Date),
          month = floor_date(Date, "month"))
 
-# Splitting openings into subcategories
+# Splitting openings into subcategories, adding an ID column for playing through
+# games in Shiny app.
 
 all_games <- all_games %>% 
   separate(ECO,
@@ -149,81 +162,20 @@ all_games <- all_games %>%
                                   ECO_letter == "E" & between(ECO_num, 60, 99) ~ "E60-E99"),
          id = seq(1, nrow(all_games)))
 
+# Trims unnecessary columns 
+
 all_games_dense <- all_games %>% 
   select(-c(W1:R_moves))
 
-saveRDS(all_games, file = "all_games.RDS")
+# Saves as RDS files
+
+# saveRDS(all_games, file = "all_games.RDS")
+
 saveRDS(all_games_dense, file = "all_games_dense.RDS")
 
-# How to output as RDS file:
-# saveRDS(all_games, file = "all_games.RDS")
 ```
 
 
-```{r unimportant}
-lichess_white <- lichess %>%
-  filter(White == "elatedjuvenile") %>%
-  mutate(result_log = case_when(Result == "1-0" ~ 1,
-                                Result == "1/2-1/2" ~ 0.5,
-                                Result == "0-1" ~ 0)) %>%
-  summarize(win_percentage = sum(result_log) / n())
 
-lichess_black <- lichess %>%
-  filter(Black == "elatedjuvenile") %>%
-  mutate(result_log = case_when(Result == "1-0" ~ 0,
-                                Result == "1/2-1/2" ~ 0.5,
-                                Result == "0-1" ~ 1)) %>%
-  summarize(win_percentage = sum(result_log) / n())
-
-chess_com_white <- chess_com %>%
-  filter(White == "elatedjuvenile") %>%
-  mutate(result_log = case_when(Result == "1-0" ~ 1,
-                                Result == "1/2-1/2" ~ 0.5,
-                                Result == "0-1" ~ 0)) %>%
-  summarize(win_percentage = sum(result_log) / n())
-
-chess_com_black <- chess_com %>%
-  filter(Black == "elatedjuvenile") %>%
-  mutate(result_log = case_when(Result == "1-0" ~ 0,
-                                Result == "1/2-1/2" ~ 0.5,
-                                Result == "0-1" ~ 1)) %>%
-  summarize(win_percentage = sum(result_log) / n())
-
-lichess_white
-lichess_black
-chess_com_white
-chess_com_black
-```
-
-```{r}
-all_games_dense$Movetext[1] %>% 
-  extract_moves(N = 120) %>% 
-  select(-c(last.move, complete.movetext)) %>% 
-  pivot_longer(cols = everything()) %>% 
-  drop_na(value) %>% 
-  mutate(value = as.character(value))
-```
-
-```{r}
-    output$board <- renderChessboardjs({
-        #chessboardjs("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2")
-        chss <- Chess$new()
-        
-        # tbl_mvs <- all_games_dense$Movetext[1] %>% 
-        #     extract_moves(N = 120) %>% 
-        #     select(-c(last.move, complete.movetext)) %>% 
-        #     pivot_longer(cols = everything()) %>% 
-        #     drop_na(value) %>% 
-        #     mutate(value = as.character(value))
-        # 
-        # for(i in 1:nrow(tbl_mvs)){
-        #     chss$move(tbl_mvs$value[i])
-        #     #Sys.sleep(1)
-        # }
-        
-        chss$move("a3")$move("b5")
-
-    })
-```
 
 

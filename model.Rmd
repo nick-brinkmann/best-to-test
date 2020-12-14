@@ -15,6 +15,10 @@ all_games_dense <- readRDS("all_games_dense.RDS")
 ## CATEGORY WIDE MODEL
 
 ```{r outcomes_model, cache = TRUE}
+
+# Models game outcomes based on rating difference & combination of opening group
+# and color I'm playing
+
 outcomes_model <- stan_glm(formula = outcome ~ elo_diff + ECO_category:me_white - 1,
          data = all_games_dense,
          refresh = 0)
@@ -22,12 +26,20 @@ outcomes_model <- stan_glm(formula = outcome ~ elo_diff + ECO_category:me_white 
 
 
 ```{r tbl_making}
+
+# Unnecessary, but gives a sense of how many games (and thus confidence interval)
+# played in each opening group/color pair.
+
 tbl_ngames <- all_games_dense %>% 
   group_by(ECO_category, me_white) %>% 
   summarize(count = n(), .groups = "keep")
 ```
 
 ```{r}
+
+# Using the model above to predict a confidence interval, then merging with the 
+# median values tibble to create the error bar plot in the Model Panel.
+
 tbl_med <- outcomes_model %>% 
   as_tibble() %>% 
   summarize_all(median) %>% 
@@ -56,6 +68,9 @@ tbl_joined <- tbl_joined %>%
 ```
 
 ```{r}
+
+# Model plot (grouped)
+
 tbl_joined %>% 
   ggplot() +
   geom_point(aes(x = fct_reorder(opening, score), y = score)) +
@@ -83,6 +98,10 @@ ggsave(filename = "lumped_openings.png")
 # INDIVIDUAL OPENINGS MODEL
 
 ```{r, cache = TRUE}
+
+# Filters to only consider openings in which I've played at least 10 games with
+# each color.
+
 openings_to_model <- all_games_dense %>% 
   group_by(ECO, me_white) %>%
   summarize(count = n(), .groups = "keep") %>% 
@@ -100,12 +119,18 @@ gms_imp_op <- all_games_dense %>%
 ```
 
 ```{r indiv_op_model, cache = TRUE}
+
+# Predicts game outcomes based on elo difference and filtered openings.
+
 indiv_op_model <- stan_glm(formula = outcome ~ elo_diff + me_white:ECO - 1,
                            data = gms_imp_op,
                            refresh = 0)
 ```
 
 ```{r, cache = TRUE}
+
+# Same process as above to get error bars and medians in same tibble.
+
 indiv_op_err <- posterior_interval(indiv_op_model) %>% 
   as_tibble(rownames = "opening")
 
